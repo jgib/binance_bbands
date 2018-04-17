@@ -27,6 +27,7 @@ TRADE_PERCENT = 1                                                 # Percent of t
 PERIOD        = 20                                                # Number of candles used to calculate SMA and BBANDS.
 STOP_PERCENT  = 0.015                                             # Percent past the buy price to exit the trade.
 STOP_WAIT     = 60 * 60 * 2                                       # Time to wait in seconds after stop condition reached.
+FEE           = 0.0005                                            # Trade fee for buy and sell.
 
 #########
 # NOTES #
@@ -176,6 +177,40 @@ def calc_bbands(candles)
   return(output)
 end
 
+def limit_order(side,qty,price)
+  debug("Initiating limit order: side=#{side}, qty=#{qty}, price=#{price}")
+  order_id = Binance::Api::Order.create!(side: "#{side}", quantity: "#{qty}", price: "#{price}", symbol: "#{SYMBOL}", timeinForce: "GTC", type: "LIMIT")[:orderId].to_s
+  debug("Order ID: #{order_id}")
+  return(order_id)
+end
+
+def market_order(side,qty)
+  debug("Initiating market order: side=#{side}, qty=#{qty}")
+  order_id = Binance::Api::Order.create!(side: "#{side}", quantity: "#{qty}", symbol: "#{SYMBOL}", type: "MARKET")[:orderId].to_s
+  debug("Order ID: #{order_id}")
+  return(order_id)
+end
+
+def cancel_order(order_id)
+  debug("Preparing to cancel order: #{order_id}")
+  Binance::Api::Order.cancel!(orderId: "#{order_id}", symbol: "#{SYMBOL}")
+  debug("Order: #{order_id} canceled")
+end
+
+def check_order_status(order_id)
+  debug("Checking order status of: #{order_id}")
+  status = Binance::Api::Order.all!(orderId: "#{order_id}", symbol: "#{SYMBOL}")[0][:status].to_s
+  debug("Status is: #{status}")
+  return(status)
+end
+
+def get_ticker()
+  debug("Getting ticker price")
+  ticker_price = Binance::Api.ticker!(symbol: "#{SYMBOL}", type: "price")[:price].to_s
+  debug("Ticker price is: #{ticker_price}")
+  return(ticker_price)
+end
+
 def main()
   keys       = decrypt()
   debug("Getting API Key")
@@ -186,8 +221,11 @@ def main()
   Binance::Api::Configuration.api_key    = api_key
   Binance::Api::Configuration.secret_key = secret_key
   bbands = calc_bbands(get_candles())
-pp bbands
+  mband  = bbands[0]
+  uband  = bbands[1]
+  lband  = bbands[2]
 
+get_ticker()
 end
 
 main()

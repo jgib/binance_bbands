@@ -68,6 +68,8 @@ STOP_WAIT     = 60 * 60 * 2                                       # Time to wait
 #########
 
 # Add email functionality
+# Add stop logic
+# Add buy/sell logic
 
 #########
 # TO DO #

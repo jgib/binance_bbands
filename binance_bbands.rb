@@ -6,28 +6,39 @@ require 'date'
 require 'io/console'
 require 'binance-ruby'
 
+# Modify the Float class so we can round down.
+class Float
+  def floor2(exp = 0)
+    multiplier = 10 ** exp
+    ((self * multiplier).floor).to_f / multiplier.to_f
+  end
+end
+
 # Get decryption password
 system("clear")
 print "Decryption Passphrase: "
 pass = STDIN.noecho(&:gets).chomp
 puts ""
 
-ROUND         = 6                                                 # Ammount to round currency decimals.
+ROUND         = 2                                                 # Ammount to round currency decimals.
 DEBUG         = true                                              # Toggle debug output.
 ERROR         = "2> /dev/null"                                    # Blackhole error output.
 HOME          = "/home/admin/ruby/"                               # Home directory of keys file.
 GPG           = "/usr/bin/gpg"                                    # Path to gpg.
 KEYS          = "#{HOME}keys.gpg"                                 # Path and filename of encrypted keys file.
 DECRYPT       = "#{GPG} --passphrase #{pass} -d #{KEYS} #{ERROR}" # Decryption command.
-SYMBOL        = "BTCUSDT"                                         # Currency pair.
+PAIR1         = "BTC"                                             # First half of currency pair.
+PAIR2         = "USDT"                                            # Second half of currency pair.
+SYMBOL        = "#{PAIR1}#{PAIR2}"                                # Currency pair.
 INTERVAL      = "5m"                                              # Candlestick intervals.  Options are: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
-BUY_PERCENT   = 1                                                 # Percent of price to buy at.
-SELL_PERCENT  = 1                                                 # Percent of price to sell at.
+BUY_PERCENT   = 1                                                 # Percent of price to buy at.  (1 - 0.02) = 2% under.  (1 + 0.02) = 2% over.
+SELL_PERCENT  = 1                                                 # Percent of price to sell at. (1 - 0.02) = 2% under.  (1 + 0.02) = 2% over.
 TRADE_PERCENT = 1                                                 # Percent of total capital to trade.
 PERIOD        = 20                                                # Number of candles used to calculate SMA and BBANDS.
 STOP_PERCENT  = 0.015                                             # Percent past the buy price to exit the trade.
 STOP_WAIT     = 60 * 60 * 2                                       # Time to wait in seconds after stop condition reached.
 FEE           = 0.0005                                            # Trade fee for buy and sell.
+REQUEST_TIME  = 0.1                                               # Time in seconds to wait before sending request.
 
 #########
 # NOTES #
@@ -99,12 +110,21 @@ def decrypt()
   debug("Starting decryption of #{KEYS}")
   raw_data = JSON.parse(`#{DECRYPT}`)
   raw_data.each do |array|
-    if    (array[0] == "API Key")
+    if(array[0] == "API Key")
       debug("Captured API Key")
       output[0] = array[1]
-    elsif (array[0] == "Secret Key")
+    elsif(array[0] == "Secret Key")
       debug("Captured Secret Key")
       output[1] = array[1]
+    elsif(array[0] == "Email")
+      debug("Captured senders email address")
+      output[2] = array[1]
+    elsif(array[0] == "Password")
+      debug("Captured senders email password")
+      output[3] = array[1]
+    elsif(array[0] == "Dest")
+      debug("Captured destination email addresses")
+      output[4] = array[1]
     end
   end
   debug("Decryption of #{KEYS} finished")
@@ -112,6 +132,7 @@ def decrypt()
 end
 
 def get_candles()
+  wait(REQUEST_TIME)
   debug("Getting candlestick data")
   output = Binance::Api.candlesticks!(interval: "#{INTERVAL}", symbol: "#{SYMBOL}", limit: "#{PERIOD}")
   return(output)
@@ -178,13 +199,15 @@ def calc_bbands(candles)
 end
 
 def limit_order(side,qty,price)
+  wait(REQUEST_TIME)
   debug("Initiating limit order: side=#{side}, qty=#{qty}, price=#{price}")
-  order_id = Binance::Api::Order.create!(side: "#{side}", quantity: "#{qty}", price: "#{price}", symbol: "#{SYMBOL}", timeinForce: "GTC", type: "LIMIT")[:orderId].to_s
+  order_id = Binance::Api::Order.create!(side: "#{side}", quantity: "#{qty}", price: "#{price}", symbol: "#{SYMBOL}", timeInForce: "GTC", type: "LIMIT")[:orderId].to_s
   debug("Order ID: #{order_id}")
   return(order_id)
 end
 
 def market_order(side,qty)
+  wait(REQUEST_TIME)
   debug("Initiating market order: side=#{side}, qty=#{qty}")
   order_id = Binance::Api::Order.create!(side: "#{side}", quantity: "#{qty}", symbol: "#{SYMBOL}", type: "MARKET")[:orderId].to_s
   debug("Order ID: #{order_id}")
@@ -192,40 +215,197 @@ def market_order(side,qty)
 end
 
 def cancel_order(order_id)
+  wait(REQUEST_TIME)
   debug("Preparing to cancel order: #{order_id}")
   Binance::Api::Order.cancel!(orderId: "#{order_id}", symbol: "#{SYMBOL}")
   debug("Order: #{order_id} canceled")
 end
 
 def check_order_status(order_id)
+  wait(REQUEST_TIME)
   debug("Checking order status of: #{order_id}")
-  status = Binance::Api::Order.all!(orderId: "#{order_id}", symbol: "#{SYMBOL}")[0][:status].to_s
-  debug("Status is: #{status}")
-  return(status)
+  status    = Array.new
+  status    = Binance::Api::Order.all!(orderId: "#{order_id}", symbol: "#{SYMBOL}")
+  state     = status[0][:status].to_s
+  price     = status[0][:price].to_f
+  debug("Status is: #{state}")
+  output    = Array.new
+  output[0] = state
+  output[1] = price
+  return(output)
 end
 
 def get_ticker()
+  wait(REQUEST_TIME)
   debug("Getting ticker price")
   ticker_price = Binance::Api.ticker!(symbol: "#{SYMBOL}", type: "price")[:price].to_s
   debug("Ticker price is: #{ticker_price}")
   return(ticker_price)
 end
 
+def get_balance()
+  wait(REQUEST_TIME)
+  debug("Getting account balances")
+  output   = Array.new
+  balances = Binance::Api::Account.info!
+  balances[:balances].each do |index|
+    if(index[:asset] == PAIR1)
+      balance1 = index[:free]
+      debug("Balance for #{PAIR1} is: #{balance1}")
+      output.push(balance1)
+    elsif(index[:asset] == PAIR2)
+      balance2 = index[:free]
+      debug("Balance for #{PAIR2} is: #{balance2}")
+      output.push(balance2)
+    end
+  end
+  return(output)
+end
+
+def price_filter()
+  wait(REQUEST_TIME)
+  debug("Getting price filter")
+  currencies = Binance::Api.exchange_info![:symbols]
+  currencies.each do |currency|
+    if(currency[:symbol] == "#{SYMBOL}")
+      filters = currency[:filters]
+      filters.each do |filter|
+        if(filter[:filterType] == "PRICE_FILTER")
+          debug("Min price is: #{filter[:minPrice]}")
+          debug("Max price is: #{filter[:maxPrice]}")
+          debug("Tick size is: #{filter[:tickSize]}")
+        end
+      end
+    end
+  end
+end
+
+def trade(side)
+  debug("Checking if we are buying or selling")
+  if(side == "buy")
+    debug("We are buying")
+    bbands   = calc_bbands(get_candles())
+    mband    = bbands[0].to_f.floor2(ROUND)
+    uband    = bbands[1].to_f.floor2(ROUND)
+    lband    = bbands[2].to_f.floor2(ROUND)
+    ticker   = get_ticker().to_f.floor2(ROUND)
+    balances = get_balance()
+    balance1 = balances[0].to_f.floor2(ROUND)
+    balance2 = balances[1].to_f.floor2(ROUND)
+    debug("Is ticker price: #{ticker} > lband: #{lband}")
+    if(ticker >= lband)
+      debug("True")
+      debug("Calculating price: #{lband} * #{BUY_PERCENT}")
+      price    = (lband * BUY_PERCENT).floor2(ROUND)
+      debug("Price is: #{price}")
+      debug("Calculating quantity: #{balance2} / #{price}")
+      qty      = (balance2 / price).floor2(ROUND)
+      debug("Quantity is: #{qty}")
+      order_id = limit_order("BUY",qty,price)
+      return(order_id)
+    else
+      debug("False")
+      debug("Calculating price: #{ticker} * #{BUY_PERCENT}")
+      price    = (ticker * BUY_PERCENT).floor2(ROUND)
+      debug("Price is: #{price}")
+      debug("Calculating quantity: #{balance2} / #{price}")
+      qty      = (balance2 / price).floor2(ROUND)
+      debug("Quantity is: #{qty}")
+      order_id = limit_order("BUY",qty,price)
+      return(order_id)
+    end
+  end
+
+  if(side == "sell")
+    debug("We are selling")
+
+  end
+end
+
+def check_filled(side,order_id)
+  if(side == "buy")
+    status = check_order_status(order_id)
+    state  = status[0]
+    price  = status[1].to_f.floor2(ROUND)
+    if(state == "FILLED")
+      return(true)
+    else
+      bbands    = calc_bbands(get_candles())
+      mband     = bbands[0].to_f.floor2(ROUND)
+      uband     = bbands[1].to_f.floor2(ROUND)
+      lband     = bbands[2].to_f.floor2(ROUND)
+      ticker    = get_ticker().to_f.floor2(ROUND)
+      if(price != (lband * BUY_PERCENT).floor2(ROUND))
+        cancel_order(order_id)
+        return(false)
+      end
+    end
+  end
+
+  if(side == "sell")
+    status = check_order_status(order_id)
+    state  = status[0]
+    price  = status[1].to_f.floor2(ROUND)
+    if(state == "FILLED")
+      return(true)
+    else
+      bbands    = calc_bbands(get_candles())
+      mband     = bbands[0].to_f.floor2(ROUND)
+      uband     = bbands[1].to_f.floor2(ROUND)
+      lband     = bbands[2].to_f.floor2(ROUND)
+      ticker    = get_ticker().to_f.floor2(ROUND)
+      if(price != (mband * SELL_PERCENT).floor2(ROUND))
+        cancel_order(order_id)
+        return(false)
+      end
+    end
+  end
+end
+
+def algo()
+  order_id = trade("buy")
+  if(check_filled("buy",order_id))
+    order_id = trade("sell")
+    if(check_filled("sell",order_id))
+      algo()
+    else
+      order_id = trade("sell")
+    end
+  else
+    algo()
+  end
+
+  order_id = trade("buy")
+  if(check_filled("buy",order_id)
+    order_id = trade("sell")
+    if(check_filled("sell",order_id)
+      return(true)
+    else
+      if
+    end
+  else
+
+  end
+
+end
+
 def main()
-  keys       = decrypt()
+  keys           = decrypt()
   debug("Getting API Key")
-  api_key    = keys[0]
+  api_key        = keys[0]
   debug("Getting Secret Key")
-  secret_key = keys[1]
+  secret_key     = keys[1]
+  debug("Getting Sender Email")
+  sender_email   = keys[2]
+  debug("Getting Email Password")
+  email_password = keys[3]
+  debug("Getting Destination Email(s)")
+  dest_emails    = keys[4]
   debug("Loading API Key")
   Binance::Api::Configuration.api_key    = api_key
+  debug("Loading Secret Key")
   Binance::Api::Configuration.secret_key = secret_key
-  bbands = calc_bbands(get_candles())
-  mband  = bbands[0]
-  uband  = bbands[1]
-  lband  = bbands[2]
-
-get_ticker()
+  algo()
 end
 
 main()

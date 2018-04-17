@@ -12,15 +12,18 @@ print "Decryption Passphrase: "
 pass = STDIN.noecho(&:gets).chomp
 puts ""
 
-ROUND    = 6                                                 # Ammount to round currency decimals.
-DEBUG    = true                                              # Toggle debug output.
-ERROR    = "2> /dev/null"                                    # Blackhole error output.
-HOME     = "/home/admin/ruby/"                               # Home directory of keys file.
-GPG      = "/usr/bin/gpg"                                    # Path to gpg.
-KEYS     = "#{HOME}keys.gpg"                                 # Path and filename of encrypted keys file.
-DECRYPT  = "#{GPG} --passphrase #{pass} -d #{KEYS} #{ERROR}" # Decryption command.
-SYMBOL   = "BTCUSDT"                                         # Currency pair.
-INTERVAL = "5m"                                              # Candlestick intervals.  Possible options are: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+ROUND         = 6                                                 # Ammount to round currency decimals.
+DEBUG         = true                                              # Toggle debug output.
+ERROR         = "2> /dev/null"                                    # Blackhole error output.
+HOME          = "/home/admin/ruby/"                               # Home directory of keys file.
+GPG           = "/usr/bin/gpg"                                    # Path to gpg.
+KEYS          = "#{HOME}keys.gpg"                                 # Path and filename of encrypted keys file.
+DECRYPT       = "#{GPG} --passphrase #{pass} -d #{KEYS} #{ERROR}" # Decryption command.
+SYMBOL        = "BTCUSDT"                                         # Currency pair.
+INTERVAL      = "5m"                                              # Candlestick intervals.  Options are: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+BUY_PERCENT   = 1
+SELL_PERCENT  = 1
+TRADE_PERCENT = 1
 
 def get_timestamp()
   time  = Time.now.to_s
@@ -33,6 +36,11 @@ def debug(text)
     time = get_timestamp
     puts "#{time} ::: #{text}"
   end
+end
+
+def wait(seconds)
+  debug("Waiting #{seconds} seconds...")
+  sleep(seconds)
 end
 
 def decrypt()
@@ -85,7 +93,7 @@ def main()
   Binance::Api::Configuration.api_key    = api_key
   Binance::Api::Configuration.secret_key = secret_key
   calc_bbands(get_candles())
-
+  wait(10)
 
 end
 

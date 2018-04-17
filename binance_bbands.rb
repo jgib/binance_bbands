@@ -21,9 +21,47 @@ KEYS          = "#{HOME}keys.gpg"                                 # Path and fil
 DECRYPT       = "#{GPG} --passphrase #{pass} -d #{KEYS} #{ERROR}" # Decryption command.
 SYMBOL        = "BTCUSDT"                                         # Currency pair.
 INTERVAL      = "5m"                                              # Candlestick intervals.  Options are: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
-BUY_PERCENT   = 1
-SELL_PERCENT  = 1
-TRADE_PERCENT = 1
+BUY_PERCENT   = 1                                                 # Percent of price to buy at.
+SELL_PERCENT  = 1                                                 # Percent of price to sell at.
+TRADE_PERCENT = 1                                                 # Percent of total capital to trade.
+PERIOD        = 20                                                # Number of candles used to calculate SMA and BBANDS.
+STOP_PERCENT  = 0.015                                             # Percent past the buy price to exit the trade.
+STOP_WAIT     = 60 * 60 * 2                                       # Time to wait in seconds after stop condition reached.
+
+#########
+# NOTES #
+#########
+
+# SMA = Sum of closing prices over n periods / by n
+# Middle Band = 20-day simple moving average (SMA)
+# Upper  Band = 20-day SMA + (20-day standard deviation of price * 2)
+# Lower  Band = 20-day SMA - (20-day standard deviation of price * 2)
+
+# Documentation: https://github.com/binance-exchange/binance-official-api-docs/blob/master/rest-api.md
+
+# Rate Limits:
+#   REQUESTS: 1200 / MIN
+#     +->       20 / SEC
+#   ORDERS:     10 / SEC
+#   ORDERS: 100000 / DAY
+
+#   A 429 will be returned by webserver when rate limit is exceeded.
+#   Repeated rate limit violations will result in 418 return code and result in IP ban.
+#   Other Response Codes:
+#    4XX malformed request, client side error.
+#    5XX internal errors, server side error.
+#    504 API successfully sent message but did not get response within timeout.
+#      Request may succeed or fail, status is unknown.
+
+#   API Keys are passed to REST via 'X-MBX-APIKEY' header
+#   All timestamps for API are in milliseconds, the default is 5000.
+#     This should probably be set to something less.
+
+#   Reference for binance API: https://github.com/jakenberg/binance-ruby
+
+#########
+# NOTES #
+#########
 
 def get_timestamp()
   time  = Time.now.to_s
@@ -62,26 +100,64 @@ end
 
 def get_candles()
   debug("Getting candlestick data")
-  output = Binance::Api.candlesticks!(interval: "#{INTERVAL}", symbol: "#{SYMBOL}")
+  output = Binance::Api.candlesticks!(interval: "#{INTERVAL}", symbol: "#{SYMBOL}", limit: "#{PERIOD}")
+  return(output)
+end
+
+def sma(prices)
+  debug("Calculating SMA")
+  total = 0
+  prices.each do |price|
+    total = total + price
+  end
+  output = total / PERIOD
+  debug("SMA is #{output}")
+  return(output)
+end
+
+def std_dev(prices,sma)
+  debug("Calculating Standard Deviation")
+  distance_to_mean = Array.new
+  debug("Calculating distance to mean")
+  prices.each do |price|
+    distance_to_mean.push((price.to_f - sma) ** 2)
+  end
+  means_sum = 0
+  debug("Summing distances to mean")
+  distance_to_mean.each do |dst|
+    means_sum = means_sum + dst
+  end
+  debug("Square root of sum over period")
+  output    = Math.sqrt(means_sum / PERIOD)
+  debug("Standard Deviation is #{output}")
   return(output)
 end
 
 def calc_bbands(candles)
   i = 1
+  closing_prices = Array.new
   candles.each do |candle|
     debug("Getting candle #{i}")
-    open_time  = candle[0]
-    open       = candle[1]
-    high       = candle[2]
-    low        = candle[3]
-    close      = candle[4]
-    volume     = candle[5]
-    close_time = candle[6]
-    num_trades = candle[8]
+    open_time  = candle[0].to_i
+    open       = candle[1].to_f
+    high       = candle[2].to_f
+    low        = candle[3].to_f
+    close      = candle[4].to_f
+    volume     = candle[5].to_f
+    close_time = candle[6].to_i
+    num_trades = candle[8].to_i
+    closing_prices.push(close)
     i = i + 1
   end
+  sma         = sma(closing_prices)
+  std_dev     = std_dev(closing_prices,sma)
+  middle_band = sma
+  debug("Middle Band is #{middle_band}")
+  upper_band  = sma + (std_dev * 2)
+  debug("Upper Band is #{upper_band}")
+  lower_band  = sma - (std_dev * 2)
+  debug("Lower Band is #{lower_band}")
 end
-
 
 def main()
   keys       = decrypt()

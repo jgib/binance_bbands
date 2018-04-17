@@ -63,6 +63,16 @@ STOP_WAIT     = 60 * 60 * 2                                       # Time to wait
 # NOTES #
 #########
 
+#########
+# TO DO #
+#########
+
+# Add email functionality
+
+#########
+# TO DO #
+#########
+
 def get_timestamp()
   time  = Time.now.to_s
   epoch = Time.now.to_f.round(4)
@@ -151,12 +161,17 @@ def calc_bbands(candles)
   end
   sma         = sma(closing_prices)
   std_dev     = std_dev(closing_prices,sma)
+  output      = Array.new
   middle_band = sma
+  output.push(middle_band)
   debug("Middle Band is #{middle_band}")
   upper_band  = sma + (std_dev * 2)
+  output.push(upper_band)
   debug("Upper Band is #{upper_band}")
   lower_band  = sma - (std_dev * 2)
+  output.push(lower_band)
   debug("Lower Band is #{lower_band}")
+  return(output)
 end
 
 def main()
@@ -168,8 +183,8 @@ def main()
   debug("Loading API Key")
   Binance::Api::Configuration.api_key    = api_key
   Binance::Api::Configuration.secret_key = secret_key
-  calc_bbands(get_candles())
-  wait(10)
+  bbands = calc_bbands(get_candles())
+pp bbands
 
 end
 

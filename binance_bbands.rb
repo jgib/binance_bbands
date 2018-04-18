@@ -224,15 +224,17 @@ end
 def check_order_status(order_id)
   wait(REQUEST_TIME)
   debug("Checking order status of: #{order_id}")
-  status    = Array.new
-  status    = Binance::Api::Order.all!(orderId: "#{order_id}", symbol: "#{SYMBOL}")
-  state     = status[0][:status].to_s
-  price     = status[0][:price].to_f
-  debug("Status is: #{state}")
-  output    = Array.new
-  output[0] = state
-  output[1] = price
-  return(output)
+  status  = Binance::Api::Order.all!(orderId: "#{order_id}", symbol: "#{SYMBOL}")[0][:status].to_s
+  debug("Status is: #{status}")
+  return(status)
+end
+
+def get_order_price(order_id)
+  wait(REQUEST_TIME)
+  debug("Checking order price of: #{order_id}")
+  price = Binance::Api::Order.all!(orderId: "#{order_id}", symbol: "#{SYMBOL}")[0][:price].to_f
+  debug("Price is: #{price}")
+  return(price)
 end
 
 def get_ticker()
@@ -322,39 +324,26 @@ def trade(side)
   end
 end
 
-def check_filled(side,order_id)
-  if(side == "buy")
-    status = check_order_status(order_id)
-    state  = status[0]
-    price  = status[1].to_f.floor2(ROUND)
-    if(state == "FILLED")
-      return(true)
-    else
-      bbands    = calc_bbands(get_candles())
-      mband     = bbands[0].to_f.floor2(ROUND)
-      uband     = bbands[1].to_f.floor2(ROUND)
-      lband     = bbands[2].to_f.floor2(ROUND)
-      ticker    = get_ticker().to_f.floor2(ROUND)
-      if(price != (lband * BUY_PERCENT).floor2(ROUND))
+def check_filled(order_id,side)
+  status = check_order_status(order_id)
+  if(status == "FILLED")
+    return(true)
+  else
+    bbands = calc_bbands(get_candles())
+    mband  = bbands[0].to_f.floor2(ROUND)
+    lband  = bbands[2].to_f.floor2(ROUND)
+    price  = get_order_price(order_id).to_f.floor2(ROUND)
+    if(side == "buy")
+      if(lband == price)
+        check_filled(order_id,side)
+      else
         cancel_order(order_id)
         return(false)
       end
-    end
-  end
-
-  if(side == "sell")
-    status = check_order_status(order_id)
-    state  = status[0]
-    price  = status[1].to_f.floor2(ROUND)
-    if(state == "FILLED")
-      return(true)
-    else
-      bbands    = calc_bbands(get_candles())
-      mband     = bbands[0].to_f.floor2(ROUND)
-      uband     = bbands[1].to_f.floor2(ROUND)
-      lband     = bbands[2].to_f.floor2(ROUND)
-      ticker    = get_ticker().to_f.floor2(ROUND)
-      if(price != (mband * SELL_PERCENT).floor2(ROUND))
+    elsif(side == "sell")
+      if(mband == price)
+        check_filled(order_id,side)
+      else
         cancel_order(order_id)
         return(false)
       end
@@ -362,31 +351,17 @@ def check_filled(side,order_id)
   end
 end
 
-def algo()
-  order_id = trade("buy")
-  if(check_filled("buy",order_id))
-    order_id = trade("sell")
-    if(check_filled("sell",order_id))
-      algo()
-    else
-      order_id = trade("sell")
+def algo(side)
+  order_id = trade(side)
+  if(check_filled(order_id,side))
+    if(side == "buy")
+      algo("sell")
+    elsif(side == "sell")
+      algo("buy")
     end
   else
-    algo()
+    algo(side)
   end
-
-  order_id = trade("buy")
-  if(check_filled("buy",order_id)
-    order_id = trade("sell")
-    if(check_filled("sell",order_id)
-      return(true)
-    else
-      if
-    end
-  else
-
-  end
-
 end
 
 def main()

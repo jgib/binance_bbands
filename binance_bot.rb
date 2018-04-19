@@ -20,6 +20,10 @@ print "Decryption Passphrase: "
 pass = STDIN.noecho(&:gets).chomp
 puts ""
 
+##########
+# CONFIG #
+##########
+
 ROUND         = 2                                                 # Ammount to round currency decimals.
 DEBUG         = true                                              # Toggle debug output.
 ERROR         = "2> /dev/null"                                    # Blackhole error output.
@@ -39,6 +43,10 @@ STOP_PERCENT  = 0.015                                             # Percent past
 STOP_WAIT     = 60 * 60 * 2                                       # Time to wait in seconds after stop condition reached.
 FEE           = 0.0005                                            # Trade fee for buy and sell.
 REQUEST_TIME  = 0.1                                               # Time in seconds to wait before sending request.
+
+##########
+# CONFIG #
+##########
 
 #########
 # NOTES #
@@ -88,12 +96,16 @@ REQUEST_TIME  = 0.1                                               # Time in seco
 #########
 
 def get_timestamp()
+  # INPUT:  NONE
+  # OUTPUT: Timestamp in format TIME ::: EPOCH
   time  = Time.now.to_s
   epoch = Time.now.to_f.round(4)
   return("#{time} ::: #{epoch}")
 end
 
 def debug(text)
+  # INPUT:  STRING
+  # OUTPUT: Displays string input prepended with timestamp if DEBUG is set to true in config.
   if DEBUG == true
     time = get_timestamp
     puts "#{time} ::: #{text}"
@@ -101,11 +113,15 @@ def debug(text)
 end
 
 def wait(seconds)
+  # INPUT:  INTEGER or FLOAT
+  # OUTPUT: NONE
   debug("Waiting #{seconds} seconds...")
   sleep(seconds)
 end
 
 def decrypt()
+  # INPUT:  NONE
+  # OUTPUT: ARRAY, In order of: [API Key, Secret Key, Email Address, Email Password, Destination Email(s)]
   output   = Array.new
   debug("Starting decryption of #{KEYS}")
   raw_data = JSON.parse(`#{DECRYPT}`)
@@ -132,6 +148,9 @@ def decrypt()
 end
 
 def get_candles()
+  # INPUT:  NONE
+  # OUTPUT: ARRAY of ARRAYS, In the form: [[Open Time, Open, High, Low, Close, Volume, Close Time, Quote Asset Volume, Number of Trades, Take Buy Base Asset Volume, 
+  #                                         Taker Buy Quote Asset Volume, Ignore], ..... ]
   wait(REQUEST_TIME)
   debug("Getting candlestick data")
   output = Binance::Api.candlesticks!(interval: "#{INTERVAL}", symbol: "#{SYMBOL}", limit: "#{PERIOD}")
@@ -139,6 +158,8 @@ def get_candles()
 end
 
 def sma(prices)
+  # INPUT:  ARRAY of prices.
+  # OUTPUT: FLOAT, SMA.
   debug("Calculating SMA")
   total = 0
   prices.each do |price|
@@ -150,6 +171,8 @@ def sma(prices)
 end
 
 def std_dev(prices,sma)
+  # INPUT:  ARRAY and FLOAT
+  # OUTPUT: FLOAT, Standard Deviation.
   debug("Calculating Standard Deviation")
   distance_to_mean = Array.new
   debug("Calculating distance to mean")
@@ -168,6 +191,8 @@ def std_dev(prices,sma)
 end
 
 def calc_bbands(candles)
+  # INPUT:  ARRAY of ARRAYS, Candle Data from function above.
+  # OUTPUT: ARRAY, [middle band, upper band, lower band]
   i = 1
   closing_prices = Array.new
   candles.each do |candle|
@@ -199,6 +224,8 @@ def calc_bbands(candles)
 end
 
 def limit_order(side,qty,price)
+  # INPUT:  STRING, FLOAT, FLOAT.
+  # OUTPUT: INTEGER, Order ID.
   wait(REQUEST_TIME)
   debug("Initiating limit order: side=#{side}, qty=#{qty}, price=#{price}")
   order_id = Binance::Api::Order.create!(side: "#{side}", quantity: "#{qty}", price: "#{price}", symbol: "#{SYMBOL}", timeInForce: "GTC", type: "LIMIT")[:orderId].to_s
@@ -207,6 +234,8 @@ def limit_order(side,qty,price)
 end
 
 def market_order(side,qty)
+  # INPUT:  STRING, FLOAT.
+  # OUTPUT: INTEGER, Order ID.
   wait(REQUEST_TIME)
   debug("Initiating market order: side=#{side}, qty=#{qty}")
   order_id = Binance::Api::Order.create!(side: "#{side}", quantity: "#{qty}", symbol: "#{SYMBOL}", type: "MARKET")[:orderId].to_s
@@ -215,6 +244,8 @@ def market_order(side,qty)
 end
 
 def cancel_order(order_id)
+  # INPUT:  INTEGER, Order ID
+  # OUTPUT: NONE
   wait(REQUEST_TIME)
   debug("Preparing to cancel order: #{order_id}")
   Binance::Api::Order.cancel!(orderId: "#{order_id}", symbol: "#{SYMBOL}")
@@ -222,6 +253,8 @@ def cancel_order(order_id)
 end
 
 def check_order_status(order_id)
+  # INPUT:  INTEGER, Order ID
+  # OUTPUT: STRING, Order Status.
   wait(REQUEST_TIME)
   debug("Checking order status of: #{order_id}")
   status  = Binance::Api::Order.all!(orderId: "#{order_id}", symbol: "#{SYMBOL}")[0][:status].to_s
@@ -230,6 +263,8 @@ def check_order_status(order_id)
 end
 
 def get_order_price(order_id)
+  # INPUT:  INTEGER, Order ID
+  # OUTPUT: FLOAT, Price of Order.
   wait(REQUEST_TIME)
   debug("Checking order price of: #{order_id}")
   price = Binance::Api::Order.all!(orderId: "#{order_id}", symbol: "#{SYMBOL}")[0][:price].to_f
@@ -238,6 +273,8 @@ def get_order_price(order_id)
 end
 
 def get_ticker()
+  # INPUT:  NONE
+  # OUTPUT: FLOAT, Ticker Price.
   wait(REQUEST_TIME)
   debug("Getting ticker price")
   ticker_price = Binance::Api.ticker!(symbol: "#{SYMBOL}", type: "price")[:price].to_s
@@ -246,6 +283,8 @@ def get_ticker()
 end
 
 def get_balance()
+  # INPUT:  NONE
+  # OUTPUT: ARRAY, [1st Trading Pair, 2nd Trading Pair]
   wait(REQUEST_TIME)
   debug("Getting account balances")
   output   = Array.new
@@ -265,6 +304,8 @@ def get_balance()
 end
 
 def price_filter()
+  # INPUT:  NONE
+  # OUTPUT: NONE
   wait(REQUEST_TIME)
   debug("Getting price filter")
   currencies = Binance::Api.exchange_info![:symbols]
@@ -283,6 +324,8 @@ def price_filter()
 end
 
 def trade(side)
+  # INPUT:  STRING, buy or sell
+  # OUTPUT: NONE
   debug("Checking if we are buying or selling")
   if(side == "buy")
     debug("We are buying")
@@ -325,6 +368,7 @@ def trade(side)
 end
 
 def check_filled(order_id,side)
+  # INPUT:  INTEGER, STRING,  Order ID and buy/sell
   status = check_order_status(order_id)
   if(status == "FILLED")
     return(true)
@@ -352,6 +396,8 @@ def check_filled(order_id,side)
 end
 
 def algo_bb1(side)
+  # INPUT:  STRING, buy/sell
+  # OUTPUT: NONE
   order_id = trade(side)
   if(check_filled(order_id,side))
     if(side == "buy")
@@ -365,6 +411,8 @@ def algo_bb1(side)
 end
 
 def main()
+  # INPUT:  NONE
+  # OUTPUT: NONE
   keys           = decrypt()
   debug("Getting API Key")
   api_key        = keys[0]
@@ -380,7 +428,13 @@ def main()
   Binance::Api::Configuration.api_key    = api_key
   debug("Loading Secret Key")
   Binance::Api::Configuration.secret_key = secret_key
-  algo_bb1()
+#  algo_bb1()
+
+
+
+
+
+
 end
 
 main()

@@ -351,16 +351,16 @@ def check_filled(order_id,side)
   end
 end
 
-def algo(side)
+def algo_bb1(side)
   order_id = trade(side)
   if(check_filled(order_id,side))
     if(side == "buy")
-      algo("sell")
+      algo_bb1("sell")
     elsif(side == "sell")
-      algo("buy")
+      algo_bb1("buy")
     end
   else
-    algo(side)
+    algo_bb1(side)
   end
 end
 
@@ -380,7 +380,7 @@ def main()
   Binance::Api::Configuration.api_key    = api_key
   debug("Loading Secret Key")
   Binance::Api::Configuration.secret_key = secret_key
-  algo()
+  algo_bb1()
 end
 
 main()

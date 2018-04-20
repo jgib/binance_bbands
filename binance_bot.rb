@@ -42,7 +42,7 @@ PERIOD        = 20                                                # Number of ca
 STOP_PERCENT  = 1 - 0.015                                         # Percent past the buy price to exit the trade.  1 - 0.01 = 1% past buy price.
 STOP_WAIT     = 60 * 60 * 2                                       # Time to wait in seconds after stop condition reached.
 FEE           = 0.0005                                            # Trade fee for buy and sell.
-REQUEST_TIME  = 0.15                                              # Time in seconds to wait before sending request.
+REQUEST_TIME  = 0.3                                               # Time in seconds to wait before sending request. (0.15 Isn't always long enough for API data to update on server).
 
 ##########
 # CONFIG #

@@ -42,7 +42,7 @@ PERIOD        = 20                                                # Number of ca
 STOP_PERCENT  = 0.015                                             # Percent past the buy price to exit the trade.
 STOP_WAIT     = 60 * 60 * 2                                       # Time to wait in seconds after stop condition reached.
 FEE           = 0.0005                                            # Trade fee for buy and sell.
-REQUEST_TIME  = 0.1                                               # Time in seconds to wait before sending request.
+REQUEST_TIME  = 0.15                                              # Time in seconds to wait before sending request.
 
 ##########
 # CONFIG #
@@ -387,7 +387,31 @@ def trade(side)
   end
 end
 
-# VVVV----- This is a good function to call the stop function that I havne't written yet....
+def stop_order(order_id)
+  # INPUT:  INTEGER, Order ID
+  # OUTPUT: BOOL
+  debug("Checking if stop price has been reached.")
+  price      = get_order_price(order_id).to_f.floor2(ROUND)
+  debug("Calculating stop price.")
+  stop_price = (price * STOP_PERCENT).to_f.floor2(ROUND)
+  debug("Stop price is: #{stop_price}")
+  ticker     = get_ticker().to_f.floor2(ROUND)
+  debug("Checking if ticker price is less than stop price: #{ticker} <= #{stop_price}")
+  if(ticker <= stop_price)
+    debug("True")
+    debug("Initiating Market-Stop order.")
+    cancel_order(order_id)
+    qty = get_balances()[0].to_f.floor2(ROUND)
+    market_order("sell",qty)
+    debug("Initiating stop wait time.")
+    wait(STOP_WAIT)
+    return(false)
+  else
+    debug("False")
+    return(true)
+  end
+end
+
 def check_filled(order_id,side)
   # INPUT:  INTEGER, STRING,  Order ID and buy/sell
   status = check_order_status(order_id)
@@ -407,7 +431,9 @@ def check_filled(order_id,side)
         return(false)
       end
     elsif(side == "sell")
-      if(mband == price)
+      if(stop_order(order_id))
+        return(true)
+      elsif(mband == price)
         check_filled(order_id,side)
       else
         cancel_order(order_id)
@@ -450,13 +476,7 @@ def main()
   Binance::Api::Configuration.api_key    = api_key
   debug("Loading Secret Key")
   Binance::Api::Configuration.secret_key = secret_key
-#  algo_bb1("buy")
-
-
-
-
-
-
+  algo_bb1("buy")
 end
 
 main()
